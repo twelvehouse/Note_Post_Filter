@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Note.com Post Filter
 // @namespace    https://note.com/mm____/n/n9ae64d1c9400
-// @version      2.0
-// @description  指定したユーザーの投稿を検索結果から非表示にします
+// @version      3.0
+// @description  noteの検索結果から指定したユーザーをミュートします
 // @author       twelvehouse
 // @match        https://note.com/*
 // @grant        GM_getValue
@@ -12,69 +12,85 @@
 // @downloadURL  https://github.com/twelvehouse/Note_Post_Filter/raw/main/note_post_filter.user.js
 // ==/UserScript==
 
-// デフォルトの非表示ユーザーリスト
-const defaultAuthorsToHide = ["エメトセルク"];
-// Tampermonkeyの設定から各種設定を取得
-let authorsToHide = GM_getValue("authorsToHide", defaultAuthorsToHide);
+// ミュートリスト
+let authorsToMuteByName = GM_getValue("authorsToMuteByName", []);
+let authorsToMuteByID = GM_getValue("authorsToMuteByID", []);
+// 「記事に追加」ボタンを置き換えるか？
 let replaceSaveButton = GM_getValue("replaceSaveButton", true); // トグルボタンのデフォルト設定
 
-// 投稿を非表示にする関数
-function hidePosts() {
+// 投稿をミュートにする関数
+function mutePosts() {
     const timelineItems = document.querySelectorAll('.m-timelineItemWrapper__itemWrapper');
     timelineItems.forEach(item => {
         const authorElement = item.querySelector('.o-largeNoteSummary__userName');
-        if (authorElement && authorsToHide.includes(authorElement.textContent.trim())) {
-            item.style.display = 'none';
+        const userLink = item.querySelector('.o-largeNoteSummary__userWrapper a');
+
+        if (authorElement && userLink) {
+            const userName = authorElement.textContent.trim();
+            const userId = userLink.getAttribute('href').replace(/^\//, ""); // 先頭の / を削除
+
+            // ミュートリストにユーザー名またはIDが一致する場合
+            if (authorsToMuteByName.includes(userName) || authorsToMuteByID.includes(userId)) {
+                item.style.display = 'none';
+            }
         }
     });
 }
 
-// タイムラインを監視し、非表示ボタンに置き換える
+// タイムラインを監視し、ミュートボタンに置き換える
 const observer = new MutationObserver(() => {
     const timelineItems = document.querySelectorAll('.m-timelineItemWrapper__itemWrapper');
 
     timelineItems.forEach(item => {
         const authorElement = item.querySelector('.o-largeNoteSummary__userName');
+        const userLink = item.querySelector('.o-largeNoteSummary__userWrapper a');
         const saveButton = item.querySelector('.o-magazineAdd button');
 
-        if (authorElement && saveButton) {
+        if (authorElement && userLink && saveButton) {
             const userName = authorElement.textContent.trim();
+            const userId = userLink.getAttribute('href').replace(/^\//, ""); // 先頭の / を削除
 
-            // 元の「記事に追加」ボタンを非表示にし、非表示ボタンを追加するか確認
+            // 元の「記事に追加」ボタンを非表示にし、ミュートボタンを追加するか確認
             if (replaceSaveButton) {
                 saveButton.style.display = 'none';
-                const hideButton = document.createElement('button');
-                hideButton.classList.add("a-icon", "a-icon--magazineAdd", "a-icon--size_mediumSmall", "custom-hideButton");
+                const muteButton = document.createElement('button');
+                muteButton.classList.add("a-icon", "a-icon--magazineAdd", "a-icon--size_mediumSmall", "custom-muteButton");
 
-                // 非表示リストに追加ボタンのイベント
-                hideButton.addEventListener('click', (event) => {
+                // ミュートリストに追加ボタンのイベント
+                muteButton.addEventListener('click', (event) => {
                     event.preventDefault();
                     event.stopPropagation();
 
                     // 確認ダイアログを表示
-                    if (confirm(`ユーザー「${userName}」を非表示にしますか？`)) {
-                        // 非表示リストに追加
-                        if (!authorsToHide.includes(userName)) {
-                            authorsToHide.push(userName);
-                            GM_setValue("authorsToHide", authorsToHide);
-                            alert(`ユーザー「${userName}」の投稿を非表示にしました`);
-
-                            // 非表示処理の実行
-                            hidePosts();
+                    if (confirm(`ユーザー「${userName}」をミュートにしますか？`)) {
+                        // ミュートリストにユーザー名とIDをそれぞれ追加
+                        if (!authorsToMuteByName.includes(userName)) {
+                            authorsToMuteByName.push(userName);
                         }
+                        if (!authorsToMuteByID.includes(userId)) {
+                            authorsToMuteByID.push(userId);
+                        }
+
+                        GM_setValue("authorsToMuteByName", authorsToMuteByName);
+                        GM_setValue("authorsToMuteByID", authorsToMuteByID);
+
+                        alert(`ユーザー「${userName}」の投稿をミュートしました`);
+
+                        // ミュート処理の実行
+                        mutePosts();
                     }
                 });
 
-                // 非表示ボタンをアクションコンテナに追加
+                // ミュートボタンをアクションコンテナに追加
                 const actionContainer = item.querySelector('.o-noteAction');
-                if (actionContainer && !item.querySelector('.custom-hideButton')) {
-                    actionContainer.appendChild(hideButton);
+                if (actionContainer && !item.querySelector('.custom-muteButton')) {
+                    actionContainer.appendChild(muteButton);
                 }
             }
         }
     });
 
-    hidePosts();
+    mutePosts();
 });
 
 // タイムライン要素を監視
@@ -83,31 +99,46 @@ if (timeline) {
     observer.observe(timeline, { childList: true, subtree: true });
 }
 
-// 非表示リストの編集メニュー
-GM_registerMenuCommand("非表示ユーザーを編集", editAuthorsToHide);
+// ミュートリストの編集メニュー（ユーザー名のみ）
+GM_registerMenuCommand("ミュートリスト編集（ユーザー名）", editAuthorsToMuteByName);
+
+// ミュートリストの編集メニュー（ユーザーIDのみ）
+GM_registerMenuCommand("ミュートリスト編集（ユーザーID）", editAuthorsToMuteByID);
+
 updateReplaceSaveButtonMenu(); // 初期表示でメニューをセット
 
-// 非表示ユーザーを編集する関数
-function editAuthorsToHide() {
-    const userInput = prompt("非表示にしたいユーザー名をカンマ区切りで入力してください:", authorsToHide.join(", "));
+// ミュートユーザー名を編集する関数
+function editAuthorsToMuteByName() {
+    const userInput = prompt("ミュートにしたいユーザー名をカンマ区切りで入力してください:", authorsToMuteByName.join(", "));
     if (userInput !== null) {
-        authorsToHide = userInput.split(",").map(name => name.trim());
-        GM_setValue("authorsToHide", authorsToHide);
-        // 自動リロード確認
-        if (confirm("非表示ユーザーリストが更新されました。\n変更を反映するためにページをリロードしますか？")) {
+        authorsToMuteByName = userInput.split(",").map(name => name.trim());
+        GM_setValue("authorsToMuteByName", authorsToMuteByName);
+        if (confirm("ミュートリストが更新されました。\n変更を反映するためにページをリロードしますか？")) {
             location.reload();
         }
     }
 }
 
-// 「記事に追加」ボタンを「非表示ボタン」に置き換える機能をトグルする関数
+// ミュートユーザーIDを編集する関数
+function editAuthorsToMuteByID() {
+    const userInput = prompt("ミュートにしたいユーザーIDをカンマ区切りで入力してください:", authorsToMuteByID.join(", "));
+    if (userInput !== null) {
+        authorsToMuteByID = userInput.split(",").map(id => id.trim());
+        GM_setValue("authorsToMuteByID", authorsToMuteByID);
+        if (confirm("ミュートリストが更新されました。\n変更を反映するためにページをリロードしますか？")) {
+            location.reload();
+        }
+    }
+}
+
+// 「記事に追加」ボタンを「ミュートボタン」に置き換える機能をトグルする関数
 function toggleSaveButtonReplacement() {
     replaceSaveButton = !replaceSaveButton;
     GM_setValue("replaceSaveButton", replaceSaveButton);
     updateReplaceSaveButtonMenu();
 
     // 設定変更後のリロード確認ダイアログ
-    if (confirm(`「記事に追加」ボタンを「非表示ボタン」に置き換える機能を${replaceSaveButton ? "ON" : "OFF"}にしました。\n変更を反映するためにページをリロードしますか？`)) {
+    if (confirm(`「記事に追加」ボタンを「ミュートボタン」に置き換える機能を${replaceSaveButton ? "ON" : "OFF"}にしました。\n変更を反映するためにページをリロードしますか？`)) {
         location.reload();
     }
 }
