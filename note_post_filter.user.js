@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Note.com Post Filter
 // @namespace    https://note.com/mm____/n/n9ae64d1c9400
-// @version      3.0
+// @version      3.1
 // @description  noteの検索結果から指定したユーザーをミュートします
 // @author       twelvehouse
 // @match        https://note.com/*
@@ -109,7 +109,10 @@ updateReplaceSaveButtonMenu(); // 初期表示でメニューをセット
 
 // ミュートユーザー名を編集する関数
 function editAuthorsToMuteByName() {
-    const userInput = prompt("ミュートにしたいユーザー名をカンマ区切りで入力してください:", authorsToMuteByName.join(", "));
+    const userInput = prompt(
+        "ミュートにしたいユーザー名をカンマ区切りで入力してください:", 
+        authorsToMuteByName.length > 0 ? authorsToMuteByName.join(", ") : ""
+    );
     if (userInput !== null) {
         authorsToMuteByName = userInput.split(",").map(name => name.trim());
         GM_setValue("authorsToMuteByName", authorsToMuteByName);
@@ -121,7 +124,10 @@ function editAuthorsToMuteByName() {
 
 // ミュートユーザーIDを編集する関数
 function editAuthorsToMuteByID() {
-    const userInput = prompt("ミュートにしたいユーザーIDをカンマ区切りで入力してください:", authorsToMuteByID.join(", "));
+    const userInput = prompt(
+        "ミュートにしたいユーザーIDをカンマ区切りで入力してください:",
+        authorsToMuteByID.length > 0 ? authorsToMuteByID.join(", ") : ""
+    );
     if (userInput !== null) {
         authorsToMuteByID = userInput.split(",").map(id => id.trim());
         GM_setValue("authorsToMuteByID", authorsToMuteByID);
