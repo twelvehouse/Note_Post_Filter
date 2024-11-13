@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         Note.com Post Filter
 // @namespace    https://note.com/mm____/n/n9ae64d1c9400
-// @version      3.2
+// @version      3.3
 // @description  noteの検索結果から指定したユーザーをミュートします
 // @author       twelvehouse
 // @match        https://note.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_addStyle
 // @updateURL    https://github.com/twelvehouse/Note_Post_Filter/raw/main/note_post_filter.user.js
 // @downloadURL  https://github.com/twelvehouse/Note_Post_Filter/raw/main/note_post_filter.user.js
 // ==/UserScript==
@@ -15,11 +16,36 @@
 // ミュートリストの取得
 let authorsToMuteByName = GM_getValue("authorsToMuteByName", []);
 let authorsToMuteByID = GM_getValue("authorsToMuteByID", []);
-// 「記事に追加」ボタンを置き換えるか？
-let replaceSaveButton = GM_getValue("replaceSaveButton", true);
 
 // ミュートリスト管理のためのMutationObserver
 let observer;
+
+// CSSの追加
+GM_addStyle(`
+    /* ミュートボタンのスタイル */
+    
+    @import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css');
+
+    .custom-muteButton {
+        background-color: transparent;
+        border: none;
+        cursor: pointer;
+        position: relative;
+        width: 19px;
+        height: 19px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .custom-muteIcon {
+        font-size: 15px;
+        color: gray;
+        transition: color 0.2s ease;
+    }
+    .custom-muteButton:hover .custom-muteIcon {
+        color: red; /* マウスオーバーで色変更 */
+    }
+`);
 
 // ノート投稿をミュートにする
 function mutePosts() {
@@ -62,24 +88,6 @@ function manageAuthorMuteList(type) {
     }
 }
 
-// 「記事に追加」ボタンの置き換え機能のトグル
-function toggleSaveButtonReplacement() {
-    const newReplaceSaveButton = !replaceSaveButton;
-    GM_setValue("replaceSaveButton", newReplaceSaveButton);
-    updateReplaceSaveButtonMenu(newReplaceSaveButton);
-
-    // 設定変更後のリロード確認ダイアログ
-    if (confirm(`「記事に追加」ボタンを「ミュートボタン」に置き換える機能を${newReplaceSaveButton ? "ON" : "OFF"}にしました。\n変更を反映するためにページをリロードしますか？`)) {
-        location.reload();
-    }
-}
-
-// トグルボタンのメニュー表示の更新
-function updateReplaceSaveButtonMenu(isReplaceOn) {
-    const label = `「記事に追加」ボタンを置き換える：${isReplaceOn ? "ON" : "OFF"}`;
-    GM_registerMenuCommand(label, toggleSaveButtonReplacement);
-}
-
 // タイムラインの監視と「ミュートボタン」の追加
 function monitorTimeline() {
     observer = new MutationObserver(() => {
@@ -89,18 +97,16 @@ function monitorTimeline() {
             const userLink = item.querySelector('.o-largeNoteSummary__userWrapper a');
             const saveButton = item.querySelector('.o-magazineAdd button');
 
-            if (authorElement && userLink && saveButton) {
+            if (authorElement && userLink) {
                 const userName = authorElement.textContent.trim();
                 const userId = userLink.getAttribute('href').replace(/^\//, ""); // 先頭の / を削除
 
-                // 元の「記事に追加」ボタンを非表示にし、ミュートボタンを追加するか確認
-                if (replaceSaveButton) {
-                    saveButton.style.display = 'none';
-                    const muteButton = createMuteButton(userName, userId);
-                    const actionContainer = item.querySelector('.o-noteAction');
-                    if (actionContainer && !item.querySelector('.custom-muteButton')) {
-                        actionContainer.appendChild(muteButton);
-                    }
+                // ミュートボタンを追加
+                const muteButton = createMuteButton(userName, userId);
+                const actionContainer = item.querySelector('.o-noteAction');
+
+                if (actionContainer && !item.querySelector('.custom-muteButton')) {
+                    actionContainer.appendChild(muteButton); // ミュートボタンを追加
                 }
             }
         });
@@ -118,16 +124,20 @@ function monitorTimeline() {
 // ミュートボタンの作成
 function createMuteButton(userName, userId) {
     const muteButton = document.createElement('button');
-    muteButton.classList.add("a-icon", "a-icon--magazineAdd", "a-icon--size_mediumSmall", "custom-muteButton");
-
-    // ミュートリストに追加ボタンのイベント
+    muteButton.classList.add("custom-muteButton");
+    // ツールチップの設定
+    muteButton.setAttribute('data-tooltip', 'ユーザーをミュート');
+    muteButton.setAttribute('aria-label', 'ユーザーをミュート');
+    // ミュートアイコンの追加
+    muteButton.innerHTML = `
+        <i class="bi bi-slash-circle custom-muteIcon"></i>
+    `;
+    // ミュートボタンのクリックイベント
     muteButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
 
-        // 確認ダイアログを表示
         if (confirm(`ユーザー「${userName}」をミュートにしますか？`)) {
-            // ミュートリストにユーザー名とIDをそれぞれ追加
             if (!authorsToMuteByName.includes(userName)) {
                 authorsToMuteByName.push(userName);
             }
@@ -139,8 +149,6 @@ function createMuteButton(userName, userId) {
             GM_setValue("authorsToMuteByID", authorsToMuteByID);
 
             alert(`ユーザー「${userName}」の投稿をミュートしました`);
-
-            // ミュート処理の実行
             mutePosts();
         }
     });
@@ -172,7 +180,6 @@ function monitorUrlChanges() {
 // メニューの登録
 GM_registerMenuCommand("ミュートリスト編集（ユーザー名）", () => manageAuthorMuteList('name'));
 GM_registerMenuCommand("ミュートリスト編集（ユーザーID）", () => manageAuthorMuteList('id'));
-updateReplaceSaveButtonMenu(replaceSaveButton);
 
 // 監視の開始
 monitorTimeline();
