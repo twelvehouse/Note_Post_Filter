@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Note.com Post Filter
 // @namespace    https://note.com/mm____/n/n9ae64d1c9400
-// @version      3.3
+// @version      3.4
 // @description  noteの検索結果から指定したユーザーをミュートします
 // @author       twelvehouse
 // @match        https://note.com/*
@@ -156,31 +156,58 @@ function createMuteButton(userName, userId) {
     return muteButton;
 }
 
-// URL変更時の監視と再適用
-function monitorUrlChanges() {
-    let currentUrl = location.href;
+// ページ復元やURL変更時の再適用
+function detectPageChanges() {
+    let currentUrl = location.href; // 現在のURLを保持
 
-    const urlObserver = new MutationObserver(() => {
-        if (currentUrl !== location.href) {
-            currentUrl = location.href;
-            // ページが変更されたときに再適用
-            mutePosts();
-            observer.disconnect();
-            const timeline = document.querySelector('.t-timeline');
-            if (timeline) {
-                observer.observe(timeline, { childList: true, subtree: true });
-            }
+    // ページがキャッシュから復元された場合も処理を実行
+    window.addEventListener("pageshow", () => {
+        if (performance.getEntriesByType("navigation")[0]?.type === "back_forward") {
+            console.log("ページキャッシュ復元検知: 再適用を実行します");
+            reinitializeScript(); // ページ復元時の処理
         }
     });
 
-    // bodyに対してURL変更を監視
+    // URL変更の監視
+    const urlObserver = new MutationObserver(() => {
+        if (currentUrl !== location.href) {
+            console.log(`URL変更検知: ${currentUrl} -> ${location.href}`);
+            currentUrl = location.href;
+            reinitializeScript(); // ページ移動時の処理
+        }
+    });
+
+    // bodyの変更を監視
     urlObserver.observe(document.body, { childList: true, subtree: true });
+
+    // DOMの安定状態を定期的にチェック
+    let lastCheck = null;
+    function checkForChanges() {
+        if (lastCheck !== document.body.innerHTML) {
+            lastCheck = document.body.innerHTML;
+            reinitializeScript(); // DOMが変化した場合にも再適用
+        }
+        requestAnimationFrame(checkForChanges); // 定期的に再検出
+    }
+    requestAnimationFrame(checkForChanges);
+}
+
+// 再初期化処理
+function reinitializeScript() {
+    observer?.disconnect(); // 既存の監視を解除
+    initializeScript(); // 初期化処理を再実行
+}
+
+// スクリプトの初期化
+function initializeScript() {
+    mutePosts(); // ミュート処理を実行
+    monitorTimeline(); // タイムライン監視を開始
 }
 
 // メニューの登録
 GM_registerMenuCommand("ミュートリスト編集（ユーザー名）", () => manageAuthorMuteList('name'));
 GM_registerMenuCommand("ミュートリスト編集（ユーザーID）", () => manageAuthorMuteList('id'));
 
-// 監視の開始
-monitorTimeline();
-monitorUrlChanges();
+// スクリプトの初期化
+initializeScript();
+detectPageChanges();
