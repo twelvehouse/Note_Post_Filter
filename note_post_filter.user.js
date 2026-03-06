@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Note.com Post Filter
 // @namespace    https://note.com/mm____/n/n9ae64d1c9400
-// @version      4.0
+// @version      4.1
 // @description  noteの検索結果や記事から指定したユーザーをミュート・非表示にします
 // @author       twelvehouse
 // @match        https://note.com/*
@@ -91,6 +91,18 @@ GM_addStyle(`
     }
 `);
 
+// ユーザーID抽出・ミュート判定のヘルパー関数
+function extractUserId(linkElement) {
+    if (!linkElement) return null;
+    const href = linkElement.getAttribute('href');
+    return href ? href.replace(/^\//, "").split('?')[0] : null;
+}
+
+function isUserMuted(userName, userId) {
+    return (userName && authorsToMuteByName.includes(userName)) ||
+        (userId && authorsToMuteByID.includes(userId));
+}
+
 // ぼかしオーバーレイを適用するヘルパー関数
 function applyBlurOverlay(item, isArticle = false) {
     if (!isArticle && !useBlurMute) {
@@ -137,10 +149,9 @@ function mutePosts() {
 
         if (authorElement && userLink) {
             const userName = authorElement.textContent.trim();
-            const userId = userLink.getAttribute('href').replace(/^\//, "").split('?')[0]; // 先頭の / を削除
+            const userId = extractUserId(userLink);
 
-            // ミュートリストにユーザー名またはIDが一致する場合
-            if (authorsToMuteByName.includes(userName) || authorsToMuteByID.includes(userId)) {
+            if (isUserMuted(userName, userId)) {
                 applyBlurOverlay(item, false);
             }
         }
@@ -151,11 +162,11 @@ function mutePosts() {
     interactionElements.forEach(item => {
         const userLink = item.querySelector('a[href^="/"]');
         if (userLink) {
-            const userId = userLink.getAttribute('href').replace(/^\//, "").split('?')[0];
+            const userId = extractUserId(userLink);
             const nameElement = item.querySelector('.a-link, .m-userItem__name');
             const userName = nameElement ? nameElement.textContent.trim() : '';
 
-            if (authorsToMuteByID.includes(userId) || (userName && authorsToMuteByName.includes(userName))) {
+            if (isUserMuted(userName, userId)) {
                 applyBlurOverlay(item, false);
             }
         }
@@ -164,11 +175,11 @@ function mutePosts() {
     // 記事本文のブロック（記事ページ）
     const headerAvatar = document.querySelector('a.o-noteContentHeader__avatar, a.o-noteArticleHeader__avatar');
     if (headerAvatar) {
-        const userId = headerAvatar.getAttribute('href').replace(/^\//, "").split('?')[0];
+        const userId = extractUserId(headerAvatar);
         const nameElement = document.querySelector('.o-noteContentHeader__creatorName, .o-noteContentHeader__name, .o-noteArticleHeader__name');
         const userName = nameElement ? nameElement.textContent.trim() : '';
 
-        if (authorsToMuteByID.includes(userId) || (userName && authorsToMuteByName.includes(userName))) {
+        if (isUserMuted(userName, userId)) {
             const articleBody = document.querySelector('.p-article, .o-noteContentText');
             if (articleBody) {
                 applyBlurOverlay(articleBody, true);
@@ -210,7 +221,7 @@ function monitorTimeline() {
 
             if (authorElement && userLink) {
                 const userName = authorElement.textContent.trim();
-                const userId = userLink.getAttribute('href').replace(/^\//, "").split('?')[0];
+                const userId = extractUserId(userLink);
 
                 const actionContainer = item.querySelector('.o-noteAction');
                 if (actionContainer && !item.querySelector('.custom-muteButton')) {
@@ -225,7 +236,7 @@ function monitorTimeline() {
         commentElements.forEach(item => {
             const userLink = item.querySelector('a[href^="/"]');
             if (userLink && !item.querySelector('.custom-muteButton')) {
-                const userId = userLink.getAttribute('href').replace(/^\//, "").split('?')[0];
+                const userId = extractUserId(userLink);
                 const nameElement = item.querySelector('a.font-semibold, .a-link');
                 const userName = nameElement ? nameElement.textContent.trim() : '';
 
@@ -245,7 +256,7 @@ function monitorTimeline() {
         const creatorInfo = document.querySelector('.o-noteContentHeader__creatorInfo, .o-noteContentHeader__nameWrapper');
         const headerAvatar = document.querySelector('a.o-noteContentHeader__avatar, a.o-noteArticleHeader__avatar');
         if (creatorInfo && headerAvatar && !creatorInfo.querySelector('.custom-muteButton')) {
-            const userId = headerAvatar.getAttribute('href').replace(/^\//, "").split('?')[0];
+            const userId = extractUserId(headerAvatar);
             const nameElement = document.querySelector('.o-noteContentHeader__creatorName, .o-noteContentHeader__name');
             const userName = nameElement ? nameElement.textContent.trim() : '';
 
@@ -281,11 +292,11 @@ function createMuteButton(userName, userId) {
         event.preventDefault();
         event.stopPropagation();
 
-        if (confirm(`ユーザー「${userName}」をミュートにしますか？`)) {
-            if (!authorsToMuteByName.includes(userName)) {
+        if (confirm(`ユーザー「${userName || userId}」をミュートにしますか？`)) {
+            if (userName && !authorsToMuteByName.includes(userName)) {
                 authorsToMuteByName.push(userName);
             }
-            if (!authorsToMuteByID.includes(userId)) {
+            if (userId && !authorsToMuteByID.includes(userId)) {
                 authorsToMuteByID.push(userId);
             }
 
